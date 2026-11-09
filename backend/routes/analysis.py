@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -7,6 +6,7 @@ from services.git_service import (
     get_changed_files,
     get_diff,
 )
+from services.test_discovery import discover_tests
 
 router = APIRouter()
 
@@ -27,6 +27,7 @@ class AnalyzeResponse(BaseModel):
     diff: str
     tests_discovered: int | None
     message: str
+    discovered_tests: list[str] | None = None
 
 
 @router.post(
@@ -52,6 +53,14 @@ def analyze_repository(request: AnalyzeRequest):
             request.target_revision,
         )
 
+        try:
+            discovery_result = discover_tests(request.repository_path)
+            tests_discovered = discovery_result.total_tests
+            discovered_test_node_ids = [t.node_id for t in discovery_result.tests]
+        except Exception:
+            tests_discovered = 0
+            discovered_test_node_ids = []
+
         return AnalyzeResponse(
             status="success",
             repository_path=request.repository_path,
@@ -60,8 +69,9 @@ def analyze_repository(request: AnalyzeRequest):
             changed_files=changed_files,
             changed_file_count=len(changed_files),
             diff=diff,
-            tests_discovered=None,
-            message="Git repository analysis completed",
+            tests_discovered=tests_discovered,
+            discovered_tests=discovered_test_node_ids,
+            message="Git repository analysis and test discovery completed",
         )
 
     except GitServiceError as exc:
